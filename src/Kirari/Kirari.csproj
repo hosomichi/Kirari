@@ -1,12 +1,19 @@
 ﻿<Project Sdk="Microsoft.NET.Sdk">
-
+    <PropertyGroup>
+        <id>Kirari</id>
+        <Authors>Hosomichi</Authors>
+        <Description>DbConnection wrapper for multi-thread query execution.</Description>
+        <PackageProjectUrl>https://github.com/hosomichi/Kirari</PackageProjectUrl>
+        <PackageLicenseUrl>https://github.com/hosomichi/Kirari/blob/master/LICENSE</PackageLicenseUrl>
+        <Copyright>Copyright (c) 2019 @Hosomichi</Copyright>
+        <PackageTags>Database Async</PackageTags>
+        <RepositoryUrl>https://github.com/hosomichi/Kirari</RepositoryUrl>
+        <RepositoryType>git</RepositoryType>
+    </PropertyGroup>
+    
     <PropertyGroup>
         <TargetFramework>netstandard2.0</TargetFramework>
-        <LangVersion>7.3</LangVersion>
+        <LangVersion>latest</LangVersion>
     </PropertyGroup>
-
-    <ItemGroup>
-      <PackageReference Include="JetBrains.Annotations" Version="2018.2.1" />
-    </ItemGroup>
 
 </Project>
