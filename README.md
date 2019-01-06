@@ -1,7 +1,8 @@
 # Kirari
-todo: nuget とかまだ
-
 **K**irari **i**s **r**econfigurable **a**synchronous **R**DB **i**nterface.
+
+[![NuGet version](https://badge.fury.io/nu/Kirari.svg)](https://www.nuget.org/packages/Kirari/)
+[![Build Status](https://dev.azure.com/hosomichi/Kirari/_apis/build/status/hosomichi.Kirari?branchName=master)](https://dev.azure.com/hosomichi/Kirari/_build/latest?definitionId=1?branchName=master)
 
 # Features
 - `DbConnection` wrapper supports multi-thread query execution.
@@ -34,7 +35,7 @@ public class Program
 }
 
 //This library requires a little bit complex configuration.
-//I Reccomend your own wrapper class include configuration.
+//I Reccomend to create your own wrapper class include configuration.
 public class MyConnection : DbConnectionProxy<MySqlConnection>
 {
     private class ConnectionFactory : IConnectionFactory<MySqlConnection>
