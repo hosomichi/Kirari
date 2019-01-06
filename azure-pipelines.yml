@@ -13,7 +13,7 @@ variables:
   buildConfiguration: 'Release'
 
 steps:
-- script: dotnet build ./src/Kirari/Kirari.csproj /p:Version=1.0.$(Build.BuildId) --configuration $(buildConfiguration) -o $(Build.ArtifactStagingDirectory)
+- script: dotnet build ./src/Kirari/Kirari.csproj /p:Version=0.0.$(Build.BuildId) --configuration $(buildConfiguration) -o $(Build.ArtifactStagingDirectory)
   displayName: 'dotnet build $(buildConfiguration)'
 
 - task: PublishBuildArtifacts@1
