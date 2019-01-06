@@ -69,6 +69,11 @@ namespace Kirari.ConnectionStrategies
             this._overriddenDatabaseName = databaseName;
         }
 
+        public DbConnection GetConnectionOrNull(DbCommandProxy command)
+        {
+            return this._workingCommands.TryGetValue(command, out var connection) ? connection : null;
+        }
+
         private void OnCommandCompleted([NotNull]DbCommandProxy command)
         {
             //Get initial connection because DbCommandProxy.Connection is mutable.

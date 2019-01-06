@@ -90,6 +90,9 @@ namespace Kirari.ConnectionStrategies
             }
         }
 
+        public DbConnection GetConnectionOrNull(DbCommandProxy command)
+            => this._connection;
+
         public async Task BeginTransactionAsync(IsolationLevel isolationLevel, ConnectionFactoryParameters parameters, CancellationToken cancellationToken)
         {
             var connection = await this.GetOrCreateConnectionAsync(parameters, cancellationToken).ConfigureAwait(false);

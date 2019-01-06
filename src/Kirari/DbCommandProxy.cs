@@ -40,15 +40,12 @@ namespace Kirari
             set => this.SourceCommand.CommandType = value;
         }
 
-
-        /// <summary>
-        /// Gets the DbConnection used by this DbCommand.
-        /// Setter is not supported.
-        /// </summary>
         protected override DbConnection DbConnection
         {
             get => this.SourceCommand.Connection;
-            set => throw new NotSupportedException();
+            set => this.SourceCommand.Connection = value is IDbConnectionProxy connectionProxy
+                ? connectionProxy.GetConnectionOrNull(this) ?? throw new InvalidOperationException("There is no suitable connection for this commnd.")
+                : value;
         }
 
         protected override DbParameterCollection DbParameterCollection

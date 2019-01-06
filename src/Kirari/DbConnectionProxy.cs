@@ -13,8 +13,8 @@ namespace Kirari
     /// Main component for this library.
     /// </summary>
     /// <typeparam name="TConnection">Connection type to virtualize.</typeparam>
-    public class DbConnectionProxy<TConnection> : DbConnection
-      where TConnection : DbConnection
+    public class DbConnectionProxy<TConnection> : DbConnection, IDbConnectionProxy
+        where TConnection : DbConnection
     {
         [NotNull]
         private readonly IConnectionFactory<TConnection> _factory;
@@ -41,7 +41,7 @@ namespace Kirari
         /// <summary>
         /// Gets the string used to open connection.
         /// Setter is not supported.
-        /// Must sets in constructor.
+        /// Must be set in constructor.
         /// </summary>
         public override string ConnectionString
         {
@@ -122,7 +122,6 @@ namespace Kirari
             //do nothing.
         }
 
-
         /// <summary>
         /// Create and returns a DbCommand object associated with current the connection.
         /// This method is thread-safe.
@@ -176,5 +175,8 @@ namespace Kirari
             this._adminConnection?.Dispose();
             this._adminConnection = null;
         }
+
+        DbConnection IDbConnectionProxy.GetConnectionOrNull(DbCommandProxy command)
+            => this._currentStrategy.GetConnectionOrNull(command);
     }
 }

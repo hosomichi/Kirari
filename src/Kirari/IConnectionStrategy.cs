@@ -1,4 +1,5 @@
 using System;
+using System.Data.Common;
 using System.Threading;
 using System.Threading.Tasks;
 using JetBrains.Annotations;
@@ -22,5 +23,8 @@ namespace Kirari
         /// <paramref name="databaseName"/> is validated by <see cref="DbConnectionProxy{TConnection}"/>.
         /// </summary>
         Task ChangeDatabaseAsync(string databaseName, CancellationToken cancellationToken);
+
+        [CanBeNull]
+        DbConnection GetConnectionOrNull(DbCommandProxy command);
     }
 }
