@@ -1,5 +1,6 @@
 using System;
 using Kirari.ConnectionStrategies;
+using Kirari.Diagnostics;
 using MySql.Data.MySqlClient;
 
 namespace Kirari.Runner
@@ -28,13 +29,24 @@ namespace Kirari.Runner
             }
         }
 
+        private class ConsoleMetricsReporter : ICommandMetricsReportable
+        {
+            public static ConsoleMetricsReporter Instance { get; } = new ConsoleMetricsReporter();
+
+            public void Report(DbCommandMetrics commandMetrics)
+            {
+                Console.WriteLine($"{commandMetrics.ExecutionType} Duration:{commandMetrics.ExecutionElapsedTime}ms Command:{commandMetrics.CommandText}");
+            }
+        }
+
         public SampleConnection(string connectionString, bool forceSingleConnection)
             : base(
                 connectionString,
                 ConnectionFactory.Instance,
                 forceSingleConnection
                     ? SingleConnectionStrategyFactory.Instance
-                    : StandardConnectionStrategyFactory.Default)
+                    : StandardConnectionStrategyFactory.Default,
+                ConsoleMetricsReporter.Instance)
         {
         }
     }

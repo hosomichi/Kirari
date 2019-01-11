@@ -5,6 +5,7 @@ using System.Diagnostics;
 using System.Linq;
 using System.Threading.Tasks;
 using Dapper;
+using Kirari.Diagnostics;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Configuration.Memory;
 using MySql.Data.MySqlClient;
@@ -20,7 +21,6 @@ namespace Kirari.Runner
 
         private static async Task Run()
         {
-            IConfigurationSource source;
             IConfiguration config = new ConfigurationBuilder()
                 .AddJsonFile("appsettings.json", true, true)
                 .Build();

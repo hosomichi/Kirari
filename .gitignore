@@ -36,3 +36,4 @@ UpgradeLog*.XML
 
 # Local History Visual Studio Extension
 .localhistory/
+src/Kirari.Runner/appsettings.json
