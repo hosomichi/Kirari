@@ -71,13 +71,8 @@ namespace Kirari
         public DbConnectionProxy([NotNull] string connectionString,
             [NotNull] IConnectionFactory<TConnection> connectionFactory,
             [NotNull] IConnectionStrategyFactory<TConnection> strategyFactory)
+            : this(connectionString, connectionFactory, strategyFactory, null)
         {
-            this._connectionString = connectionString;
-            this._factory = connectionFactory;
-            var (defaultStrategy, transactionStrategy) = strategyFactory.CreateStrategyPair(connectionFactory, this.CreateFactoryParameters());
-            this._defaultStrategy = defaultStrategy;
-            this._transactionStrategy = transactionStrategy;
-            this._currentStrategy = defaultStrategy;
         }
 
         public DbConnectionProxy([NotNull] string connectionString,
