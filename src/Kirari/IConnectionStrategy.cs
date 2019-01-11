@@ -3,6 +3,7 @@ using System.Data.Common;
 using System.Threading;
 using System.Threading.Tasks;
 using JetBrains.Annotations;
+using Kirari.Diagnostics;
 
 namespace Kirari
 {
@@ -16,7 +17,9 @@ namespace Kirari
         /// Detect command end by <see cref="DbCommandProxy.Dispose"/>.
         /// </summary>
         [ItemNotNull]
-        Task<DbCommandProxy> CreateCommandAsync(ConnectionFactoryParameters parameters, CancellationToken cancellationToken);
+        Task<DbCommandProxy> CreateCommandAsync(ConnectionFactoryParameters parameters,
+            [CanBeNull] ICommandMetricsReportable metricsReporter,
+            CancellationToken cancellationToken);
 
         /// <summary>
         /// Change database to <paramref name="databaseName"/>.

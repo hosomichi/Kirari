@@ -6,6 +6,7 @@ using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using JetBrains.Annotations;
+using Kirari.Diagnostics;
 
 namespace Kirari.ConnectionStrategies
 {
@@ -24,10 +25,10 @@ namespace Kirari.ConnectionStrategies
         private readonly object _reusableConnectionsLock = new object();
 
         [NotNull]
-        private readonly HashSet<DbConnection> _reusableConnections = new HashSet<DbConnection>();
+        private readonly HashSet<IConnectionWithId<DbConnection>> _reusableConnections = new HashSet<IConnectionWithId<DbConnection>>();
 
         [NotNull]
-        private readonly ConcurrentDictionary<DbCommandProxy, DbConnection> _workingCommands = new ConcurrentDictionary<DbCommandProxy, DbConnection>();
+        private readonly ConcurrentDictionary<DbCommandProxy, IConnectionWithId<DbConnection>> _workingCommands = new ConcurrentDictionary<DbCommandProxy, IConnectionWithId<DbConnection>>();
 
         [CanBeNull]
         private string _overriddenDatabaseName;
@@ -40,21 +41,24 @@ namespace Kirari.ConnectionStrategies
         }
 
         public async Task<DbCommandProxy> CreateCommandAsync(ConnectionFactoryParameters parameters,
+            ICommandMetricsReportable metricsReporter,
             CancellationToken cancellationToken)
         {
             var connection = this.TryReuse();
             if (connection == null)
             {
                 connection = this._factory.CreateConnection(parameters);
-                await connection.OpenAsync(cancellationToken).ConfigureAwait(false);
+                await connection.Connection.OpenAsync(cancellationToken).ConfigureAwait(false);
                 if (!string.IsNullOrWhiteSpace(this._overriddenDatabaseName))
                 {
-                    connection.ChangeDatabase(this._overriddenDatabaseName);
+                    connection.Connection.ChangeDatabase(this._overriddenDatabaseName);
                 }
             }
 
             var command = new DbCommandProxy(
-                connection.CreateCommand(),
+                connection.Id,
+                connection.Connection.CreateCommand(),
+                metricsReporter,
                 this.OnCommandCompleted);
 
             this._workingCommands.TryAdd(command, connection);
@@ -71,10 +75,10 @@ namespace Kirari.ConnectionStrategies
 
         public DbConnection GetConnectionOrNull(DbCommandProxy command)
         {
-            return this._workingCommands.TryGetValue(command, out var connection) ? connection : null;
+            return this._workingCommands.TryGetValue(command, out var connection) ? connection.Connection : null;
         }
 
-        private void OnCommandCompleted([NotNull]DbCommandProxy command)
+        private void OnCommandCompleted([NotNull] DbCommandProxy command)
         {
             //Get initial connection because DbCommandProxy.Connection is mutable.
             if (!this._workingCommands.TryRemove(command, out var connection)) return;
@@ -99,7 +103,7 @@ namespace Kirari.ConnectionStrategies
         }
 
         [CanBeNull]
-        private DbConnection TryReuse()
+        private IConnectionWithId<DbConnection> TryReuse()
         {
             lock (this._reusableConnectionsLock)
             {
@@ -107,10 +111,11 @@ namespace Kirari.ConnectionStrategies
 
                 var connection = this._reusableConnections.First();
                 this._reusableConnections.Remove(connection);
-                if (!string.IsNullOrWhiteSpace(this._overriddenDatabaseName) && connection.Database != this._overriddenDatabaseName)
+                if (!string.IsNullOrWhiteSpace(this._overriddenDatabaseName) && connection.Connection.Database != this._overriddenDatabaseName)
                 {
-                    connection.ChangeDatabase(this._overriddenDatabaseName);
+                    connection.Connection.ChangeDatabase(this._overriddenDatabaseName);
                 }
+
                 return connection;
             }
         }

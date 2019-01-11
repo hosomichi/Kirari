@@ -5,6 +5,7 @@ using System.Data.Common;
 using System.Threading;
 using System.Threading.Tasks;
 using JetBrains.Annotations;
+using Kirari.Diagnostics;
 
 namespace Kirari.ConnectionStrategies
 {
@@ -27,7 +28,7 @@ namespace Kirari.ConnectionStrategies
         private readonly Queue<TaskCompletionSource<bool>> _commandPreparerQueue = new Queue<TaskCompletionSource<bool>>();
 
         [CanBeNull]
-        private DbConnection _connection;
+        private IConnectionWithId<DbConnection> _connection;
 
         [CanBeNull]
         private DbTransaction _transaction;
@@ -37,14 +38,16 @@ namespace Kirari.ConnectionStrategies
 
         private bool _isCommandExecuting;
 
-        public DbConnection TypicalConnection => this._connection;
+        public DbConnection TypicalConnection => this._connection?.Connection;
 
         public QueuedSingleConnectionStrategy([NotNull] IConnectionFactory<DbConnection> factory)
         {
             this._factory = factory;
         }
 
-        public async Task<DbCommandProxy> CreateCommandAsync(ConnectionFactoryParameters parameters, CancellationToken cancellationToken)
+        public async Task<DbCommandProxy> CreateCommandAsync(ConnectionFactoryParameters parameters,
+            ICommandMetricsReportable metricsReporter,
+            CancellationToken cancellationToken)
         {
             var preparer = new TaskCompletionSource<bool>();
             lock (this._commandQueueLock)
@@ -61,7 +64,7 @@ namespace Kirari.ConnectionStrategies
 
             var connection = await this.GetOrCreateConnectionAsync(parameters, cancellationToken).ConfigureAwait(false);
 
-            var sourceCommand = connection.CreateCommand();
+            var sourceCommand = connection.Connection.CreateCommand();
 
             if (this._transaction != null)
             {
@@ -69,7 +72,9 @@ namespace Kirari.ConnectionStrategies
             }
 
             var command = new DbCommandProxy(
+                connection.Id,
                 sourceCommand,
+                metricsReporter,
                 this.OnCommandCompleted);
 
             return command;
@@ -81,8 +86,8 @@ namespace Kirari.ConnectionStrategies
             try
             {
                 this._overriddenDatabaseName = databaseName;
-                if (this._connection == null) return ;
-                this._connection.ChangeDatabase(databaseName);
+                if (this._connection == null) return;
+                this._connection.Connection.ChangeDatabase(databaseName);
             }
             finally
             {
@@ -91,12 +96,12 @@ namespace Kirari.ConnectionStrategies
         }
 
         public DbConnection GetConnectionOrNull(DbCommandProxy command)
-            => this._connection;
+            => this._connection?.Connection;
 
         public async Task BeginTransactionAsync(IsolationLevel isolationLevel, ConnectionFactoryParameters parameters, CancellationToken cancellationToken)
         {
             var connection = await this.GetOrCreateConnectionAsync(parameters, cancellationToken).ConfigureAwait(false);
-            this._transaction = connection.BeginTransaction(isolationLevel);
+            this._transaction = connection.Connection.BeginTransaction(isolationLevel);
         }
 
 #pragma warning disable 1998
@@ -123,7 +128,7 @@ namespace Kirari.ConnectionStrategies
             => this._transaction;
 
         [ItemNotNull]
-        private async Task<DbConnection> GetOrCreateConnectionAsync(ConnectionFactoryParameters parameters, CancellationToken cancellationToken)
+        private async Task<IConnectionWithId<DbConnection>> GetOrCreateConnectionAsync(ConnectionFactoryParameters parameters, CancellationToken cancellationToken)
         {
             if (this._connection != null) return this._connection;
 
@@ -132,11 +137,12 @@ namespace Kirari.ConnectionStrategies
             {
                 if (this._connection != null) return this._connection;
                 var connection = this._factory.CreateConnection(parameters);
-                await connection.OpenAsync(cancellationToken).ConfigureAwait(false);
+                await connection.Connection.OpenAsync(cancellationToken).ConfigureAwait(false);
                 if (!string.IsNullOrWhiteSpace(this._overriddenDatabaseName))
                 {
-                    connection.ChangeDatabase(this._overriddenDatabaseName);
+                    connection.Connection.ChangeDatabase(this._overriddenDatabaseName);
                 }
+
                 return this._connection = connection;
             }
             finally

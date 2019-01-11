@@ -5,6 +5,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using System.Transactions;
 using JetBrains.Annotations;
+using Kirari.Diagnostics;
 
 namespace Kirari
 {
@@ -19,6 +20,9 @@ namespace Kirari
         [NotNull]
         private readonly IConnectionFactory<TConnection> _factory;
 
+        [CanBeNull]
+        private readonly ICommandMetricsReportable _commandMetricsReporter;
+
         [NotNull]
         private readonly IDefaultConnectionStrategy _defaultStrategy;
 
@@ -29,10 +33,10 @@ namespace Kirari
         private IConnectionStrategy _currentStrategy;
 
         [CanBeNull]
-        private TConnection _adminConnection;
+        private IConnectionWithId<TConnection> _adminConnection;
 
         [NotNull]
-        private TConnection AdminConnection
+        private IConnectionWithId<TConnection> AdminConnection
             => this._adminConnection ?? (this._adminConnection = this._factory.CreateConnection(this.CreateFactoryParameters()));
 
         [NotNull]
@@ -50,19 +54,19 @@ namespace Kirari
         }
 
         public override string Database
-            => this.AdminConnection.Database;
+            => this.AdminConnection.Connection.Database;
 
         public override ConnectionState State
             => ConnectionState.Open;
 
         public override string DataSource
-            => this.AdminConnection.DataSource;
+            => this.AdminConnection.Connection.DataSource;
 
         public override string ServerVersion
-            => this.AdminConnection.ServerVersion;
+            => this.AdminConnection.Connection.ServerVersion;
 
         public override int ConnectionTimeout
-            => this.AdminConnection.ConnectionTimeout;
+            => this.AdminConnection.Connection.ConnectionTimeout;
 
         public DbConnectionProxy([NotNull] string connectionString,
             [NotNull] IConnectionFactory<TConnection> connectionFactory,
@@ -70,6 +74,20 @@ namespace Kirari
         {
             this._connectionString = connectionString;
             this._factory = connectionFactory;
+            var (defaultStrategy, transactionStrategy) = strategyFactory.CreateStrategyPair(connectionFactory, this.CreateFactoryParameters());
+            this._defaultStrategy = defaultStrategy;
+            this._transactionStrategy = transactionStrategy;
+            this._currentStrategy = defaultStrategy;
+        }
+
+        public DbConnectionProxy([NotNull] string connectionString,
+            [NotNull] IConnectionFactory<TConnection> connectionFactory,
+            [NotNull] IConnectionStrategyFactory<TConnection> strategyFactory,
+            [CanBeNull] ICommandMetricsReportable commandMetricsReporter)
+        {
+            this._connectionString = connectionString;
+            this._factory = connectionFactory;
+            this._commandMetricsReporter = commandMetricsReporter;
             var (defaultStrategy, transactionStrategy) = strategyFactory.CreateStrategyPair(connectionFactory, this.CreateFactoryParameters());
             this._defaultStrategy = defaultStrategy;
             this._transactionStrategy = transactionStrategy;
@@ -109,9 +127,9 @@ namespace Kirari
         /// <inheritdoc cref="ChangeDatabase"/>
         public async Task ChangeDatabaseAsync(string databaseName, CancellationToken cancellationToken)
         {
-            await this.AdminConnection.OpenAsync(cancellationToken);
-            this.AdminConnection.ChangeDatabase(databaseName);
-            this.AdminConnection.Close();
+            await this.AdminConnection.Connection.OpenAsync(cancellationToken);
+            this.AdminConnection.Connection.ChangeDatabase(databaseName);
+            this.AdminConnection.Connection.Close();
 
             await this._defaultStrategy.ChangeDatabaseAsync(databaseName, cancellationToken).ConfigureAwait(false);
             await this._transactionStrategy.ChangeDatabaseAsync(databaseName, cancellationToken).ConfigureAwait(false);
@@ -135,7 +153,7 @@ namespace Kirari
 
         /// <inheritdoc cref="CreateDbCommand"/>
         public Task<DbCommandProxy> CreateDbCommandAsync(CancellationToken cancellationToken)
-            => this._currentStrategy.CreateCommandAsync(this.CreateFactoryParameters(), cancellationToken);
+            => this._currentStrategy.CreateCommandAsync(this.CreateFactoryParameters(), this._commandMetricsReporter, cancellationToken);
 
         /// <summary>
         /// Not supported.
@@ -154,13 +172,13 @@ namespace Kirari
         }
 
         public override DataTable GetSchema()
-            => this.AdminConnection.GetSchema();
+            => this.AdminConnection.Connection.GetSchema();
 
         public override DataTable GetSchema(string collectionName)
-            => this.AdminConnection.GetSchema(collectionName);
+            => this.AdminConnection.Connection.GetSchema(collectionName);
 
         public override DataTable GetSchema(string collectionName, string[] restrictionValues)
-            => this.AdminConnection.GetSchema(collectionName, restrictionValues);
+            => this.AdminConnection.Connection.GetSchema(collectionName, restrictionValues);
 
         private ConnectionFactoryParameters CreateFactoryParameters()
             => new ConnectionFactoryParameters(this.ConnectionString);

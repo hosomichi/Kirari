@@ -10,9 +10,9 @@ namespace Kirari.Runner
         {
             public static IConnectionFactory<MySqlConnection> Instance { get; } = new ConnectionFactory();
 
-            public MySqlConnection CreateConnection(ConnectionFactoryParameters parameters)
+            public IConnectionWithId<MySqlConnection> CreateConnection(ConnectionFactoryParameters parameters)
             {
-                return new MySqlConnection(parameters.ConnectionString);
+                return new ConnectionWithId<MySqlConnection>(new MySqlConnection(parameters.ConnectionString));
             }
         }
 

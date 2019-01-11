@@ -43,7 +43,7 @@ public class MyConnection : DbConnectionProxy<MySqlConnection>
         public static ConnectionFactory Instance { get; } = new ConnectionFactory();
         public MySqlConnection CreateConnection(ConnectionFactoryParameters parameters)
         {
-            return new MySqlConnection(parameters.ConnectionString);
+            return new ConnectionWithId<MySqlConnection>(new MySqlConnection(parameters.ConnectionString));
         }
     }
     public MyConnection(string connectionString)
