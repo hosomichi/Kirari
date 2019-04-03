@@ -4,6 +4,8 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Kirari", "Kirari\Kirari.csp
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Kirari.Runner", "Kirari.Runner\Kirari.Runner.csproj", "{602A1194-522A-4B07-93E7-A2BF148892FA}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Kirari.Samples", "Kirari.Samples\Kirari.Samples.csproj", "{E3E3D119-68F4-414A-8D51-4BEA96FD8CCD}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -18,5 +20,9 @@ Global
 		{602A1194-522A-4B07-93E7-A2BF148892FA}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{602A1194-522A-4B07-93E7-A2BF148892FA}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{602A1194-522A-4B07-93E7-A2BF148892FA}.Release|Any CPU.Build.0 = Release|Any CPU
+		{E3E3D119-68F4-414A-8D51-4BEA96FD8CCD}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{E3E3D119-68F4-414A-8D51-4BEA96FD8CCD}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{E3E3D119-68F4-414A-8D51-4BEA96FD8CCD}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{E3E3D119-68F4-414A-8D51-4BEA96FD8CCD}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 EndGlobal
