@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Data;
 using System.Data.Common;
 using System.Diagnostics;
@@ -23,6 +24,8 @@ namespace Kirari
 
         [NotNull]
         private readonly Action<DbCommandProxy> _onDisposed;
+
+        private bool _disposed;
 
         /// <summary>
         /// Get unique identifier for this command.
@@ -214,9 +217,13 @@ namespace Kirari
 
         protected override void Dispose(bool disposing)
         {
-            base.Dispose(disposing);
-            this.SourceCommand.Dispose();
-            this._onDisposed(this);
+            if(this._disposed) return;
+            this._disposed = true;
+
+            DisposeHelper.EnsureAllSteps(
+                () => base.Dispose(disposing),
+                () => this.SourceCommand.Dispose(),
+                () => this._onDisposed(this));
         }
     }
 }

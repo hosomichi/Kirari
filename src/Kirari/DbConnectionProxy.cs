@@ -29,6 +29,8 @@ namespace Kirari
         [NotNull]
         private readonly ITransactionConnectionStrategy _transactionStrategy;
 
+        private bool _disposed;
+
         [NotNull]
         private IConnectionStrategy _currentStrategy;
 
@@ -180,13 +182,15 @@ namespace Kirari
 
         protected override void Dispose(bool disposing)
         {
-            base.Dispose(disposing);
+            if(this._disposed) return;
+            this._disposed = true;
 
-            this._defaultStrategy.Dispose();
-            this._transactionStrategy.Dispose();
-
-            this._adminConnection?.Dispose();
-            this._adminConnection = null;
+            DisposeHelper.EnsureAllSteps(
+                () => base.Dispose(disposing),
+                () => this._defaultStrategy.Dispose(),
+                () => this._transactionStrategy.Dispose(),
+                () => this._adminConnection?.Dispose(),
+                () => this._adminConnection = null);
         }
 
         DbConnection IDbConnectionProxy.GetConnectionOrNull(DbCommandProxy command)

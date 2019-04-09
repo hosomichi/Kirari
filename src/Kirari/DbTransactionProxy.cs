@@ -12,6 +12,8 @@ namespace Kirari
     /// </summary>
     public class DbTransactionProxy : DbTransaction
     {
+        private bool _disposed;
+
         [NotNull]
         private readonly ITransactionConnectionStrategy _strategy;
 
@@ -59,8 +61,12 @@ namespace Kirari
 
         protected override void Dispose(bool disposing)
         {
-            base.Dispose(disposing);
-            this._strategy.EndTransaction();
+            if(this._disposed) return;
+            this._disposed = true;
+
+            DisposeHelper.EnsureAllSteps(
+                () => base.Dispose(disposing),
+                () => this._strategy.EndTransaction());
         }
     }
 }
