@@ -1,5 +1,4 @@
 using System;
-using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Data;
 using System.Linq;
@@ -16,207 +15,436 @@ namespace Kirari.Samples.GlobalConnectionPoolStrategies
         public string PoolName { get; }
 
         /// <summary>
+        /// 準備中になってから実際に使われるまでの時間の上限。
+        /// この時間をこえて使用中にならなかったら回収する。
+        /// </summary>
+        private static readonly TimeSpan _preparingExpiry = TimeSpan.FromSeconds(1);
+
+        /// <summary>
         /// 最後に解放してから一定時間以上経過していたら、次回使う時には <see cref="MySqlConnection.Dispose"/> して <see cref="MySqlConnection"/> 作り直す。
         /// </summary>
         private static readonly TimeSpan _forceDisposeTimeFromLastUsed = TimeSpan.FromHours(1);
 
-        /// <summary>
-        /// 貸し出してから一定時間返却がなかったら強制的に Pool に戻す。
-        /// </summary>
-        private static readonly TimeSpan _maxExecutionTime = TimeSpan.FromHours(2);
-
-        /// <summary>
-        /// 未解放のコネクションが無いか一定周期でチェックを行う。
-        /// </summary>
-        private static readonly TimeSpan _groomingInterval = TimeSpan.FromMinutes(30);
-
         [NotNull]
         private readonly IConnectionFactory<MySqlConnection> _factory;
 
+        private long _payOutNumber;
+
+        #region ConnectionPool
+
+        /// <summary>
+        /// プールするコネクションの数
+        /// </summary>
         private readonly int _connectionPoolSize;
 
+        /// <summary>
+        /// 使用可能なコネクションのスロット。
+        /// </summary>
         [NotNull]
-        private readonly object _commandQueueLock = new object();
+        private readonly InternalPooledConnection[] _connectionPool;
 
+        /// <summary>
+        /// <see cref="_connectionPool"/> 内の貸し出し状況等を弄るためのロックオブジェクト。
+        /// </summary>
+        private readonly object _connectionPoolLock = new object();
+
+        #endregion
+
+        #region WaitQueue
+
+        /// <summary>
+        /// 定期的に <see cref="_waitQueue"/> で待っているやつを動かす処理を呼び出す間隔。
+        /// </summary>
+        private static readonly TimeSpan _waitQueueCheckInterval = TimeSpan.FromSeconds(1);
+
+        /// <summary>
+        /// <see cref="_waitQueue"/> を操作するためのロックオブジェクト。
+        /// </summary>
         [NotNull]
-        private readonly object _groomingLock = new object();
+        private readonly object _waitQueueLock = new object();
 
+        /// <summary>
+        /// プールの空きを待っている処理の一覧。
+        /// </summary>
         [NotNull]
-        private readonly PooledConnection[] _connectionPool;
+        private readonly Queue<TaskCompletionSource<PayOut>> _waitQueue = new Queue<TaskCompletionSource<PayOut>>();
 
-        [NotNull]
-        private readonly ConcurrentQueue<int> _usableConnections = new ConcurrentQueue<int>();
-
-        [NotNull]
-        private readonly Queue<TaskCompletionSource<int>> _commandPreparerQueue = new Queue<TaskCompletionSource<int>>();
-
-        private DateTime _nextGroomingTime;
+        #endregion
 
         public GlobalConnectionPool([NotNull] string poolName, [NotNull] IConnectionFactory<MySqlConnection> factory, int connectionPoolSize)
         {
             this.PoolName = poolName;
             this._factory = factory;
             this._connectionPoolSize = connectionPoolSize;
-            this._nextGroomingTime = DateTime.Now.Add(_groomingInterval);
 
-            //固定長配列いず大正義。
-            this._connectionPool = new PooledConnection[this._connectionPoolSize];
+            //固定長配列いず大正義
+            this._connectionPool = new InternalPooledConnection[this._connectionPoolSize];
 
-            //初期状態では全ての Index が利用可能。
+            //全部利用可能状態で初期化
+            var now = DateTime.Now;
             for (var i = 0; i < connectionPoolSize; i++)
             {
-                this._usableConnections.Enqueue(i);
+                this._connectionPool[i] = new InternalPooledConnection()
+                {
+                    ConnectionWithId = null,
+                    Status = PoolStatus.Assignable,
+                    StatusChangedAt = now,
+                    ExpiredAt = now,
+                    PayOutNumber = null,
+                    CallerName = null,
+                };
             }
+
+            //定期的にキューをチェックするやつを回す
+            Task.Run(async () =>
+            {
+                while (true)
+                {
+                    try
+                    {
+                        await Task.Delay(_waitQueueCheckInterval);
+
+                        this.TryDequeueWaitQueue();
+                    }
+                    catch (Exception)
+                    {
+                        //無限ループ奴なので握り潰し
+                    }
+                }
+            });
         }
 
         /// <summary>
         /// 利用可能な Connection と、その Connection の <see cref="_connectionPool"/> 内での Index を取得する。
         /// 利用可能な Connection が無い場合は、利用可能になるまで待機する。
         /// </summary>
-        public async ValueTask<(IConnectionWithId<MySqlConnection> connection, int index)> GetConnectionAsync(ConnectionFactoryParameters parameters,
+        public async ValueTask<PooledConnection> GetConnectionAsync(ConnectionFactoryParameters parameters,
+            TimeSpan expiry,
+            string callerName,
             CancellationToken cancellationToken)
         {
-            this.Grooming();
-
-            //利用可能なコネクションが無かったら待機列へどうぞ。
-            if (!this._usableConnections.TryDequeue(out var index))
+            var usablePayOut = this.GetUsableConnection();
+            PayOut payOut;
+            if (usablePayOut.HasValue)
             {
-                var preparer = new TaskCompletionSource<int>(TaskCreationOptions.RunContinuationsAsynchronously);
-                lock (this._commandQueueLock)
+                payOut = usablePayOut.Value;
+            }
+            else
+            {
+                //利用可能なコネクションが無かったら待機列へどうぞ。
+
+                var preparer = new TaskCompletionSource<PayOut>(TaskCreationOptions.RunContinuationsAsynchronously);
+                lock (this._waitQueueLock)
                 {
-                    this._commandPreparerQueue.Enqueue(preparer);
+                    this._waitQueue.Enqueue(preparer);
                 }
 
                 //利用可能なコネクションの Index を受け取って待機列を抜けるのだ。
-                index = await preparer.Task.ConfigureAwait(false);
+                payOut = await preparer.Task.ConfigureAwait(false);
             }
 
-            var connection = this._connectionPool[index];
+            var pooledConnection = this._connectionPool[payOut.Index];
 
-            if (connection != null)
+            lock (this._connectionPoolLock)
             {
-                if (connection.Connection.State != ConnectionState.Open)
+                //準備が間に合わず再利用されてしまった場合はしょうがないので例外
+                if (pooledConnection.Status != PoolStatus.Preparing
+                    || pooledConnection.PayOutNumber.HasValue == false
+                    || pooledConnection.PayOutNumber.Value != payOut.PayOutNumber)
                 {
-                    //切断済コネクションは捨てて作り直すぞ！
-                    connection.Connection.Dispose();
-                    connection = null;
+                    throw new InvalidOperationException("時間切れのため他の処理にコネクションが再利用されました。");
                 }
-                else if (connection.LastReleased.HasValue && connection.LastReleased.Value.Add(_forceDisposeTimeFromLastUsed) < DateTime.Now)
+
+                pooledConnection.Status = PoolStatus.Using;
+                pooledConnection.StatusChangedAt = DateTime.Now;
+                pooledConnection.CallerName = callerName;
+                pooledConnection.ExpiredAt = pooledConnection.StatusChangedAt.Add(expiry);
+            }
+
+            try
+            {
+                //実際のコネクションが無かったら作る。
+                if (pooledConnection.ConnectionWithId == null)
                 {
-                    //最後に解放してから一定時間以上経過してても捨てて作り直すぞ！
-                    connection.Connection.Dispose();
-                    connection = null;
+                    pooledConnection.ConnectionWithId = this._factory.CreateConnection(parameters);
+                }
+
+                //作ったやつは当然開いてないから開く必要がある。
+                //あるいは時間経過で勝手に閉じられることもあるかもね。
+                if (pooledConnection.ConnectionWithId.Connection.State != ConnectionState.Open)
+                {
+                    await pooledConnection.ConnectionWithId.Connection.OpenAsync(cancellationToken).ConfigureAwait(false);
                 }
             }
-
-            //最初に全部のコネクション作るわけじゃないから無かったら作るんだよ。
-            if (connection == null)
+            catch (Exception)
             {
-                this._connectionPool[index] = connection = new PooledConnection(this._factory.CreateConnection(parameters));
+                lock (this._connectionPoolLock)
+                {
+                    pooledConnection.Status = PoolStatus.Assignable;
+                    pooledConnection.StatusChangedAt = DateTime.Now;
+                    pooledConnection.PayOutNumber = null;
+                    pooledConnection.CallerName = null;
+                    pooledConnection.ExpiredAt = pooledConnection.StatusChangedAt;
+                    pooledConnection.ConnectionWithId?.Dispose();
+                    pooledConnection.ConnectionWithId = null;
+                }
+                throw;
             }
 
-            connection.LastPayOut = DateTime.Now;
-
-            //作ったやつは当然開いてないから開く必要がある。
-            //あるいは時間経過で勝手に閉じられることもあるかもね。
-            if (connection.Connection.State != ConnectionState.Open)
-            {
-                await connection.Connection.OpenAsync(cancellationToken).ConfigureAwait(false);
-            }
-
-            return (connection.ConnectionWithId, index);
+            return new PooledConnection(pooledConnection.ConnectionWithId, payOut.Index, payOut.PayOutNumber);
         }
 
 
-        public void ReleaseConnection(int index)
+        public void ReleaseConnection(int index, long payOutNumber)
         {
-            //解放したタイミングで最後に使った時間を更新。
-            var connection = this._connectionPool[index];
-            if (connection != null)
+            var pooledConnection = this._connectionPool[index];
+
+            lock (this._connectionPoolLock)
             {
-                connection.LastReleased = DateTime.Now;
+                //別の誰かが既に回収済みなら何もしない
+                if (pooledConnection.Status != PoolStatus.Using) return;
+                if (pooledConnection.PayOutNumber.HasValue == false) return;
+
+                //既に違う相手に貸し出し済なら何もしない
+                if (pooledConnection.PayOutNumber.Value != payOutNumber) return;
+
+                //回収して使用可能になったことをマーク
+                pooledConnection.Status = PoolStatus.Assignable;
+                pooledConnection.StatusChangedAt = DateTime.Now;
+                pooledConnection.PayOutNumber = null;
+                pooledConnection.CallerName = null;
+                pooledConnection.ExpiredAt = pooledConnection.StatusChangedAt;
             }
 
-            //待機中のコマンドがあればそちらに直接利用可能な Index を流す。
-            lock (this._commandQueueLock)
-            {
-                if (this._commandPreparerQueue.Count > 0)
-                {
-                    var preparer = this._commandPreparerQueue.Dequeue();
-                    preparer.SetResult(index);
-                    return;
-                }
-            }
-
-            //待機中のコマンドがない場合は Pool に返す。
-            this._usableConnections.Enqueue(index);
+            //空きができたら待機列からお呼び出し
+            this.TryDequeueWaitQueue();
         }
 
-        private void Grooming()
+        private void TryDequeueWaitQueue()
         {
-            var now = DateTime.Now;
-            if (this._nextGroomingTime > now) return;
-
-            lock (this._groomingLock)
+            lock (this._waitQueueLock)
             {
-                //多重実行防止のためロックの中で再チェック。
-                if (this._nextGroomingTime > now) return;
+                //キューが空なら何もしない
+                var queueCount = this._waitQueue.Count;
+                if(queueCount <= 0) return;
 
-                //次回実行日時を更新。
-                this._nextGroomingTime = now.Add(_groomingInterval);
+                //およそ使用可能な Connection 数を取得
+                var estimatedUsableCount = this.GetUsableConnectionCount();
 
-                var maxPayoutToRelease = now.Add(-_maxExecutionTime); //この時刻以前に払い出して返ってきていないやつは解放する。
-                for (var index = 0; index < this._connectionPool.Length; index++)
+                //キュー内の数と使用可能な数のうち小さい方を試行回数とする
+                var tryCount = Math.Min(queueCount, estimatedUsableCount);
+
+                for (var i = 0; i < tryCount; i++)
                 {
-                    var connection = this._connectionPool[index];
+                    var payOut = this.GetUsableConnection();
 
-                    //まだ作っていないやつは当然何もしない。
-                    if (connection == null) continue;
+                    //もう使える Connection が無くなっていたら終了
+                    //数をチェックしてからここまでの間にロックかけてないからそういうこともある
+                    if(payOut.HasValue == false) break;
 
-                    //規定時間経過していないやつは触らなくてよし。
-                    if (connection.LastPayOut > maxPayoutToRelease) continue;
+                    //この処理内でキューの数は変わらないから Dequeue は成功する
+                    var waitSource = this._waitQueue.Dequeue();
+                    waitSource.SetResult(payOut.Value);
+                }
+            }
+        }
 
-                    //払い出した後にちゃんと返ってきてるやつも問題無し。
-                    if (connection.LastReleased.HasValue && connection.LastReleased >= connection.LastPayOut) continue;
-
-                    //一定時間返ってきていないやつは何かによって回収漏れな可能性が高いので回収しちゃう。
-                    connection.Dispose();
-                    this._connectionPool[index] = null;
-                    var usableConnections = this._usableConnections.ToHashSet();
-                    if (!usableConnections.Contains(index))
+        private int GetUsableConnectionCount()
+        {
+            var count = 0;
+            lock (this._connectionPoolLock)
+            {
+                for (var index = 0; index < this._connectionPoolSize; index++)
+                {
+                    var pooledConnection = this._connectionPool[index];
+                    switch (pooledConnection.Status)
                     {
-                        this._usableConnections.Enqueue(index);
+                        case PoolStatus.Assignable:
+                            count += 1;
+                            break;
+                        case PoolStatus.Preparing:
+                        case PoolStatus.Using:
+                            //期限の切れてないやつは使えない
+                            if(pooledConnection.ExpiredAt > DateTime.Now) continue;
+
+                            count += 1;
+                            break;
+                        default:
+                            throw new ArgumentOutOfRangeException();
                     }
                 }
+
+                return count;
             }
         }
 
-        private class PooledConnection : IDisposable
+        private PayOut? GetUsableConnection()
         {
-            public IConnectionWithId<MySqlConnection> ConnectionWithId { get; private set; }
-
-            public MySqlConnection Connection => this.ConnectionWithId.Connection;
-
-            /// <summary>
-            /// 最後に Pool から払い出した日時
-            /// </summary>
-            public DateTime LastPayOut { get; set; }
-
-            /// <summary>
-            /// 最後に Pool に戻ってきた日時
-            /// </summary>
-            public DateTime? LastReleased { get; set; }
-
-            public PooledConnection(IConnectionWithId<MySqlConnection> connectionWithId)
+            lock (this._connectionPoolLock)
             {
-                this.ConnectionWithId = connectionWithId;
+                //回収しやすいやつから探索するのだ
+
+                //まずは使用可能なやつを探索
+                var assignable = Enumerable.Range(0, this._connectionPoolSize)
+                    .Select(index => (index, connection : this._connectionPool[index]))
+                    .Where(x => x.connection.Status == PoolStatus.Assignable)
+                    .OrderBy(x => x.connection.StatusChangedAt) //StatusChangedAt の昇順で最も長く Assignable を維持しているやつを選ぶ。つまり使われていない期間の長いやつから順に使う。
+                    .ToArray();
+                if (assignable.Length > 0)
+                {
+                    var (index, pooledConnection) = assignable[0];
+                    var payOutNumber = ChangeToPreparing(pooledConnection);
+                    return new PayOut(index, payOutNumber);
+                }
+
+                //準備中で期限切れたやつを探索
+                for (var index = 0; index < this._connectionPoolSize; index++)
+                {
+                    var pooledConnection = this._connectionPool[index];
+                    if (pooledConnection.Status != PoolStatus.Preparing) continue;
+
+                    //期限の切れてないやつは使えない
+                    if(pooledConnection.ExpiredAt > DateTime.Now) continue;
+
+                    var payOutNumber = ChangeToPreparing(pooledConnection);
+                    return new PayOut(index, payOutNumber);
+                }
+
+                //使用中で期限切れたやつを探索
+                for (var index = 0; index < this._connectionPoolSize; index++)
+                {
+                    var pooledConnection = this._connectionPool[index];
+                    if (pooledConnection.Status != PoolStatus.Using) continue;
+
+                    //期限の切れてないやつは使えない
+                    if(pooledConnection.ExpiredAt > DateTime.Now) continue;
+
+                    //一定時間返ってきていないやつは何かによって回収漏れな可能性が高いので回収しちゃう
+                    pooledConnection.ConnectionWithId?.Dispose();
+                    pooledConnection.ConnectionWithId = null;
+
+                    var payOutNumber = ChangeToPreparing(pooledConnection);
+                    return new PayOut(index, payOutNumber);
+                }
+
+                //見つからなかった
+                return null;
+
+                long ChangeToPreparing(InternalPooledConnection connection)
+                {
+                    if (connection.ConnectionWithId != null)
+                    {
+                        if (connection.ConnectionWithId.Connection.State != ConnectionState.Open)
+                        {
+                            //切断済コネクションは捨てて作り直すぞ！
+                            connection.ConnectionWithId.Dispose();
+                            connection.ConnectionWithId = null;
+                        }
+                        else if (connection.StatusChangedAt.Add(_forceDisposeTimeFromLastUsed) < DateTime.Now)
+                        {
+                            //最後に解放してから一定時間以上経過してても捨てて作り直すぞ！
+                            connection.ConnectionWithId.Dispose();
+                            connection.ConnectionWithId = null;
+                        }
+                    }
+
+                    connection.Status = PoolStatus.Preparing;
+                    connection.StatusChangedAt = DateTime.Now;
+                    connection.ExpiredAt = connection.StatusChangedAt.Add(_preparingExpiry);
+                    connection.PayOutNumber = Interlocked.Increment(ref this._payOutNumber);
+                    connection.CallerName = null;
+
+                    return connection.PayOutNumber.Value;
+                }
             }
+        }
+
+        private class InternalPooledConnection : IDisposable
+        {
+            [CanBeNull]
+            public IConnectionWithId<MySqlConnection> ConnectionWithId { get; set; }
+
+            /// <summary>
+            /// 現在の状態。
+            /// </summary>
+            public PoolStatus Status { get; set; }
+
+            /// <summary>
+            /// 現在の状態に変化した日時。
+            /// </summary>
+            public DateTime StatusChangedAt { get; set; }
+
+            /// <summary>
+            /// 有効期限。
+            /// この日時を過ぎても状態が変化していなかったら回収して使用可能にする。
+            /// </summary>
+            public DateTime ExpiredAt { get; set; }
+
+            /// <summary>
+            /// 貸し出し番号。
+            /// 貸し出した相手からの処理要求かどうかを識別するのに使う。
+            /// </summary>
+            public long? PayOutNumber { get; set; }
+
+            /// <summary>
+            /// この接続を借りた主体を識別する名前。
+            /// </summary>
+            public string CallerName { get; set; }
 
             public void Dispose()
             {
                 this.ConnectionWithId?.Dispose();
                 this.ConnectionWithId = null;
             }
+        }
+
+        private struct PayOut : IEquatable<PayOut>
+        {
+            public int Index { get; }
+
+            public long PayOutNumber{ get; }
+
+            public PayOut(int index, long payOutNumber)
+            {
+                this.Index = index;
+                this.PayOutNumber = payOutNumber;
+            }
+
+            public bool Equals(PayOut other)
+            {
+                return this.Index == other.Index && this.PayOutNumber == other.PayOutNumber;
+            }
+
+            public override bool Equals(object obj)
+            {
+                return obj is PayOut other && this.Equals(other);
+            }
+
+            public override int GetHashCode()
+            {
+                unchecked
+                {
+                    return (this.Index * 397) ^ this.PayOutNumber.GetHashCode();
+                }
+            }
+        }
+
+        private enum PoolStatus
+        {
+            /// <summary>
+            /// 誰にも使用されておらず、使用可能な状態を示します。
+            /// </summary>
+            Assignable,
+
+            /// <summary>
+            /// 貸し出しの予約が行われ、貸し出し処理に移っていることを示します。
+            /// </summary>
+            Preparing,
+
+            /// <summary>
+            /// 貸し出され、使用中であることを示します。
+            /// </summary>
+            Using,
         }
     }
 }

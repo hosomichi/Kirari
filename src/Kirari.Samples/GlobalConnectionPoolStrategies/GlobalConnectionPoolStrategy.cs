@@ -1,6 +1,8 @@
 using System;
+using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Data.Common;
+using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using JetBrains.Annotations;
@@ -10,6 +12,14 @@ namespace Kirari.Samples.GlobalConnectionPoolStrategies
 {
     public class GlobalConnectionPoolStrategy : IDefaultConnectionStrategy
     {
+        /// <summary>
+        /// 最大実行時間を取得します。
+        /// この時間を越えて Pool から借り続けた場合、Pool によって強制的に回収されます。
+        /// </summary>
+        private static readonly TimeSpan _maxExecutionTime = TimeSpan.FromMinutes(5);
+
+        private readonly ConcurrentDictionary<DbCommandProxy, bool> _workingCommands = new ConcurrentDictionary<DbCommandProxy, bool>();
+
         private GlobalConnectionPool _pool;
 
         [CanBeNull]
@@ -22,7 +32,12 @@ namespace Kirari.Samples.GlobalConnectionPoolStrategies
 
         public async Task<DbCommandProxy> CreateCommandAsync(ConnectionFactoryParameters parameters, ICommandMetricsReportable metricsReporter, CancellationToken cancellationToken)
         {
-            var (connection, index) = await this._pool.GetConnectionAsync(parameters, cancellationToken).ConfigureAwait(false);
+            var (connection, index, payOutNumber) = await this._pool.GetConnectionAsync(
+                    parameters,
+                    _maxExecutionTime,
+                    nameof(GlobalConnectionPoolStrategy),
+                    cancellationToken)
+                .ConfigureAwait(false);
 
             //ChangeDatabase はあまり対応したくない感じだけど、一応指定されてたらここで反映しよう。
             if (!string.IsNullOrWhiteSpace(this._overriddenDatabaseName) && connection.Connection.Database != this._overriddenDatabaseName)
@@ -36,7 +51,12 @@ namespace Kirari.Samples.GlobalConnectionPoolStrategies
                 connection.Id,
                 sourceCommand,
                 metricsReporter,
-                _ => this._pool.ReleaseConnection(index));
+                x =>
+                {
+                    this._workingCommands.TryRemove(x, out _);
+                    this._pool.ReleaseConnection(index, payOutNumber);
+                });
+            this._workingCommands.TryAdd(command, true);
 
             return command;
         }
@@ -56,8 +76,18 @@ namespace Kirari.Samples.GlobalConnectionPoolStrategies
 
         public void Dispose()
         {
-            //Pool はお外で管理されてるからここでは参照切るだけ。
-            this._pool = null;
+            DisposeHelper.EnsureAllSteps(
+                () =>
+                {
+                    //実行中のものがあれば全て解放する
+                    var workingCommands = this._workingCommands.Keys.ToArray();
+                    foreach (var workingCommand in workingCommands)
+                    {
+                        workingCommand.Dispose();
+                    }
+                },
+                () => this._workingCommands.Clear(),
+                () => this._pool = null); //Pool はお外で管理されてるからここでは参照切るだけ
         }
     }
 }

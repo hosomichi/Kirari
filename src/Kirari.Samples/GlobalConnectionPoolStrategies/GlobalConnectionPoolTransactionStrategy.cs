@@ -1,3 +1,4 @@
+using System;
 using System.Collections.Generic;
 using System.Data;
 using System.Data.Common;
@@ -11,6 +12,12 @@ namespace Kirari.Samples.GlobalConnectionPoolStrategies
 {
     public class GlobalConnectionPoolTransactionStrategy: IDefaultConnectionStrategy, ITransactionConnectionStrategy
     {
+        /// <summary>
+        /// 最大実行時間を取得します。
+        /// この時間を越えて Pool から借り続けた場合、Pool によって強制的に回収されます。
+        /// </summary>
+        private static readonly TimeSpan _maxExecutionTime = TimeSpan.FromMinutes(30);
+
         [NotNull]
         private readonly object _commandQueueLock = new object();
 
@@ -23,9 +30,7 @@ namespace Kirari.Samples.GlobalConnectionPoolStrategies
         private  GlobalConnectionPool _pool;
 
         [CanBeNull]
-        private IConnectionWithId<MySqlConnection> _connection;
-
-        private int? _connectionIndex;
+        private PooledConnection _connection;
 
         [CanBeNull]
         private MySqlTransaction _transaction;
@@ -35,7 +40,7 @@ namespace Kirari.Samples.GlobalConnectionPoolStrategies
 
         private bool _isCommandExecuting;
 
-        public DbConnection TypicalConnection => this._connection?.Connection;
+        public DbConnection TypicalConnection => this._connection?.ConnectionWithId.Connection;
 
         public GlobalConnectionPoolTransactionStrategy([NotNull] GlobalConnectionPool pool)
         {
@@ -84,7 +89,7 @@ namespace Kirari.Samples.GlobalConnectionPoolStrategies
             {
                 this._overriddenDatabaseName = databaseName;
                 if (this._connection == null) return;
-                this._connection.Connection.ChangeDatabase(databaseName);
+                this._connection.ConnectionWithId.Connection.ChangeDatabase(databaseName);
             }
             finally
             {
@@ -93,7 +98,7 @@ namespace Kirari.Samples.GlobalConnectionPoolStrategies
         }
 
         public DbConnection GetConnectionOrNull(DbCommandProxy command)
-            => this._connection?.Connection;
+            => this._connection?.ConnectionWithId.Connection;
 
         public async Task BeginTransactionAsync(IsolationLevel isolationLevel, ConnectionFactoryParameters parameters, CancellationToken cancellationToken)
         {
@@ -125,26 +130,30 @@ namespace Kirari.Samples.GlobalConnectionPoolStrategies
         [ItemNotNull]
         private async Task<IConnectionWithId<MySqlConnection>> GetConnectionAsync(ConnectionFactoryParameters parameters, CancellationToken cancellationToken)
         {
-            //取得済ならそのまま使う。
-            if (this._connection != null) return this._connection;
+            //取得済ならそのまま使う
+            if (this._connection != null) return this._connection.ConnectionWithId;
 
             await this._connectionLock.WaitAsync(cancellationToken).ConfigureAwait(false);
             try
             {
-                if (this._connection != null) return this._connection;
+                if (this._connection != null) return this._connection.ConnectionWithId;
 
-                //未取得の場合は Pool から払い出してもらう。
+                //未取得の場合は Pool から払い出してもらう
                 //Strategy が破棄されるまで返さないぞ！
-                var (connection, index) = await this._pool.GetConnectionAsync( parameters, cancellationToken).ConfigureAwait(false);
+                var connection = await this._pool.GetConnectionAsync(
+                        parameters,
+                        _maxExecutionTime,
+                        nameof(GlobalConnectionPoolTransactionStrategy),
+                        cancellationToken)
+                    .ConfigureAwait(false);
                 this._connection = connection;
-                this._connectionIndex = index;
 
-                if (!string.IsNullOrWhiteSpace(this._overriddenDatabaseName) && connection.Connection.Database != this._overriddenDatabaseName)
+                if (!string.IsNullOrWhiteSpace(this._overriddenDatabaseName) && connection.ConnectionWithId.Connection.Database != this._overriddenDatabaseName)
                 {
-                    await connection.Connection.ChangeDatabaseAsync(this._overriddenDatabaseName, cancellationToken).ConfigureAwait(false);
+                    await connection.ConnectionWithId.Connection.ChangeDatabaseAsync(this._overriddenDatabaseName, cancellationToken).ConfigureAwait(false);
                 }
 
-                return this._connection = connection;
+                return (this._connection = connection).ConnectionWithId;
             }
             finally
             {
@@ -167,21 +176,18 @@ namespace Kirari.Samples.GlobalConnectionPoolStrategies
 
         public void Dispose()
         {
-            //Transaction が生き残っていたら終わらせる。
-            this.EndTransaction();
-
-            //Connection を Pool に返す。
-            if (this._connectionIndex.HasValue)
-            {
-                this._pool.ReleaseConnection(this._connectionIndex.Value);
-            }
-
-            //借りてたものをもう使わないという意思表示。
-            this._connection = null;
-            this._connectionIndex = null;
-
-            //Pool はお外で管理されてるからここでは参照切るだけ。
-            this._pool = null;
+            DisposeHelper.EnsureAllSteps(
+                () => this.EndTransaction(), //Transaction が生き残っていたら終わらせる
+                () =>
+                {
+                    //Connection を Pool に返す
+                    if (this._connection != null)
+                    {
+                        this._pool.ReleaseConnection(this._connection.IndexInPool, this._connection.PayOutNumber);
+                    }
+                },
+                () => this._connection = null, //借りてたものをもう使わないという意思表示
+                () => this._pool = null); //Pool はお外で管理されてるからここでは参照切るだけ
         }
     }
 }
