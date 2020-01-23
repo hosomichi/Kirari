@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Data.Common;
@@ -66,11 +66,10 @@ namespace Kirari.ConnectionStrategies
             return command;
         }
 
-#pragma warning disable 1998
-        public async Task ChangeDatabaseAsync(string databaseName, CancellationToken cancellationToken)
-#pragma warning restore 1998
+        public Task ChangeDatabaseAsync(string databaseName, CancellationToken cancellationToken)
         {
             this._overriddenDatabaseName = databaseName;
+            return Task.CompletedTask;
         }
 
         public DbConnection GetConnectionOrNull(DbCommandProxy command)

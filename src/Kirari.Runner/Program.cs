@@ -5,10 +5,7 @@ using System.Diagnostics;
 using System.Linq;
 using System.Threading.Tasks;
 using Dapper;
-using Kirari.Diagnostics;
 using Microsoft.Extensions.Configuration;
-using Microsoft.Extensions.Configuration.Memory;
-using MySql.Data.MySqlClient;
 
 namespace Kirari.Runner
 {
@@ -27,7 +24,7 @@ namespace Kirari.Runner
 
             var connectionString = config.GetConnectionString("Default");
 
-            Console.WriteLine($"Setup");
+            Console.WriteLine("Setup");
             const string databaseName = "KirariTest";
             using (var conn = new SampleConnection(connectionString, false))
             {
@@ -175,7 +172,7 @@ CREATE TABLE TestData
             }
             finally
             {
-                Console.WriteLine($"Cleanup");
+                Console.WriteLine("Cleanup");
                 using (var conn = new SampleConnection(connectionString, false))
                 {
                     await conn.ExecuteAsync($"DROP DATABASE {databaseName};");
