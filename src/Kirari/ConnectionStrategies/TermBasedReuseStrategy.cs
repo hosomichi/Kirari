@@ -91,12 +91,16 @@ namespace Kirari.ConnectionStrategies
             Task.Run(async () =>
             {
                 await Task.Delay(this._reusableTime).ConfigureAwait(false);
+
+                bool removable;
                 lock (this._reusableConnectionsLock)
                 {
-                    if (this._reusableConnections.Remove(connection))
-                    {
-                        connection.Dispose();
-                    }
+                    removable = this._reusableConnections.Remove(connection);
+                }
+
+                if (removable)
+                {
+                    connection.Dispose();
                 }
             });
         }
@@ -104,19 +108,21 @@ namespace Kirari.ConnectionStrategies
         [CanBeNull]
         private IConnectionWithId<DbConnection> TryReuse()
         {
+            IConnectionWithId<DbConnection> connection;
             lock (this._reusableConnectionsLock)
             {
                 if (this._reusableConnections.Count <= 0) return null;
 
-                var connection = this._reusableConnections.First();
+                connection = this._reusableConnections.First();
                 this._reusableConnections.Remove(connection);
-                if (!string.IsNullOrWhiteSpace(this._overriddenDatabaseName) && connection.Connection.Database != this._overriddenDatabaseName)
-                {
-                    connection.Connection.ChangeDatabase(this._overriddenDatabaseName);
-                }
-
-                return connection;
             }
+
+            if (!string.IsNullOrWhiteSpace(this._overriddenDatabaseName) && connection.Connection.Database != this._overriddenDatabaseName)
+            {
+                connection.Connection.ChangeDatabase(this._overriddenDatabaseName);
+            }
+
+            return connection;
         }
 
         public void Dispose()
