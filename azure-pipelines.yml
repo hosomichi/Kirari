@@ -7,12 +7,16 @@ trigger:
 - master
 
 pool:
-  vmImage: 'Ubuntu-16.04'
+  vmImage: 'Ubuntu-18.04'
 
 variables:
   buildConfiguration: 'Release'
 
 steps:
+- task: UseDotNet@2
+  inputs:
+    version: 3.1.x
+
 - script: dotnet build ./src/Kirari/Kirari.csproj /p:Version=0.0.$(Build.BuildId) --configuration $(buildConfiguration) -o $(Build.ArtifactStagingDirectory)
   displayName: 'dotnet build $(buildConfiguration)'
 

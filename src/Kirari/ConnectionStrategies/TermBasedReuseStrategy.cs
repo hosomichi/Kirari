@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Data.Common;
@@ -66,11 +66,10 @@ namespace Kirari.ConnectionStrategies
             return command;
         }
 
-#pragma warning disable 1998
-        public async Task ChangeDatabaseAsync(string databaseName, CancellationToken cancellationToken)
-#pragma warning restore 1998
+        public Task ChangeDatabaseAsync(string databaseName, CancellationToken cancellationToken)
         {
             this._overriddenDatabaseName = databaseName;
+            return Task.CompletedTask;
         }
 
         public DbConnection GetConnectionOrNull(DbCommandProxy command)
@@ -92,12 +91,16 @@ namespace Kirari.ConnectionStrategies
             Task.Run(async () =>
             {
                 await Task.Delay(this._reusableTime).ConfigureAwait(false);
+
+                bool removable;
                 lock (this._reusableConnectionsLock)
                 {
-                    if (this._reusableConnections.Remove(connection))
-                    {
-                        connection.Dispose();
-                    }
+                    removable = this._reusableConnections.Remove(connection);
+                }
+
+                if (removable)
+                {
+                    connection.Dispose();
                 }
             });
         }
@@ -105,19 +108,21 @@ namespace Kirari.ConnectionStrategies
         [CanBeNull]
         private IConnectionWithId<DbConnection> TryReuse()
         {
+            IConnectionWithId<DbConnection> connection;
             lock (this._reusableConnectionsLock)
             {
                 if (this._reusableConnections.Count <= 0) return null;
 
-                var connection = this._reusableConnections.First();
+                connection = this._reusableConnections.First();
                 this._reusableConnections.Remove(connection);
-                if (!string.IsNullOrWhiteSpace(this._overriddenDatabaseName) && connection.Connection.Database != this._overriddenDatabaseName)
-                {
-                    connection.Connection.ChangeDatabase(this._overriddenDatabaseName);
-                }
-
-                return connection;
             }
+
+            if (!string.IsNullOrWhiteSpace(this._overriddenDatabaseName) && connection.Connection.Database != this._overriddenDatabaseName)
+            {
+                connection.Connection.ChangeDatabase(this._overriddenDatabaseName);
+            }
+
+            return connection;
         }
 
         public void Dispose()

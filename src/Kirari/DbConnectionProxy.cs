@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Data;
 using System.Data.Common;
 using System.Threading;
@@ -161,11 +161,10 @@ namespace Kirari
         public override void Open()
             => this.OpenAsync(CancellationToken.None).GetAwaiter().GetResult();
 
-#pragma warning disable 1998
-        public override async Task OpenAsync(CancellationToken cancellationToken)
-#pragma warning restore 1998
+        public override Task OpenAsync(CancellationToken cancellationToken)
         {
             //do nothing.
+            return Task.CompletedTask;
         }
 
         public override DataTable GetSchema()

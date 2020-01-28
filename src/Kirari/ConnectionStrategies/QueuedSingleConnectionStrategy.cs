@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.Data;
 using System.Data.Common;
@@ -104,18 +104,16 @@ namespace Kirari.ConnectionStrategies
             this._transaction = connection.Connection.BeginTransaction(isolationLevel);
         }
 
-#pragma warning disable 1998
-        public async Task CommitAsync(CancellationToken cancellationToken)
-#pragma warning restore 1998
+        public Task CommitAsync(CancellationToken cancellationToken)
         {
             this._transaction?.Commit();
+            return Task.CompletedTask;
         }
 
-#pragma warning disable 1998
-        public async Task RollbackAsync(CancellationToken cancellationToken)
+        public Task RollbackAsync(CancellationToken cancellationToken)
         {
-#pragma warning restore 1998
             this._transaction?.Rollback();
+            return Task.CompletedTask;
         }
 
         public void EndTransaction()
