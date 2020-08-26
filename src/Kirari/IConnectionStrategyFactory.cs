@@ -1,5 +1,4 @@
 using System.Data.Common;
-using JetBrains.Annotations;
 
 namespace Kirari
 {
@@ -13,6 +12,6 @@ namespace Kirari
         /// <summary>
         /// Create <see cref="IDefaultConnectionStrategy"/> and <see cref="ITransactionConnectionStrategy"/>.
         /// </summary>
-        ConnectionStrategyPair CreateStrategyPair([NotNull] IConnectionFactory<TConnection> connectionFactory, ConnectionFactoryParameters parameters);
+        ConnectionStrategyPair CreateStrategyPair(IConnectionFactory<TConnection> connectionFactory, ConnectionFactoryParameters parameters);
     }
 }

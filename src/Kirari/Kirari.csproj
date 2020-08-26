@@ -9,6 +9,7 @@
         <PackageTags>Database Async</PackageTags>
         <RepositoryUrl>https://github.com/hosomichi/Kirari</RepositoryUrl>
         <RepositoryType>git</RepositoryType>
+        <Nullable>enable</Nullable>
     </PropertyGroup>
     
     <PropertyGroup>

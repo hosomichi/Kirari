@@ -4,7 +4,6 @@ using System.Data;
 using System.Data.Common;
 using System.Threading;
 using System.Threading.Tasks;
-using JetBrains.Annotations;
 using Kirari.Diagnostics;
 using MySql.Data.MySqlClient;
 
@@ -18,37 +17,31 @@ namespace Kirari.Samples.GlobalConnectionPoolStrategies
         /// </summary>
         private static readonly TimeSpan _maxExecutionTime = TimeSpan.FromMinutes(30);
 
-        [NotNull]
         private readonly object _commandQueueLock = new object();
 
-        [NotNull]
         private readonly SemaphoreSlim _connectionLock = new SemaphoreSlim(1, 1);
 
-        [NotNull]
         private readonly Queue<TaskCompletionSource<bool>> _commandPreparerQueue = new Queue<TaskCompletionSource<bool>>();
 
         private  GlobalConnectionPool _pool;
 
-        [CanBeNull]
-        private PooledConnection _connection;
+        private PooledConnection? _connection;
 
-        [CanBeNull]
-        private MySqlTransaction _transaction;
+        private MySqlTransaction? _transaction;
 
-        [CanBeNull]
-        private string _overriddenDatabaseName;
+        private string? _overriddenDatabaseName;
 
         private bool _isCommandExecuting;
 
-        public DbConnection TypicalConnection => this._connection?.ConnectionWithId.Connection;
+        public DbConnection? TypicalConnection => this._connection?.ConnectionWithId.Connection;
 
-        public GlobalConnectionPoolTransactionStrategy([NotNull] GlobalConnectionPool pool)
+        public GlobalConnectionPoolTransactionStrategy(GlobalConnectionPool pool)
         {
             this._pool = pool;
         }
 
         public async Task<DbCommandProxy> CreateCommandAsync(ConnectionFactoryParameters parameters,
-            ICommandMetricsReportable metricsReporter,
+            ICommandMetricsReportable? metricsReporter,
             CancellationToken cancellationToken)
         {
             var preparer = new TaskCompletionSource<bool>();
@@ -97,7 +90,7 @@ namespace Kirari.Samples.GlobalConnectionPoolStrategies
             }
         }
 
-        public DbConnection GetConnectionOrNull(DbCommandProxy command)
+        public DbConnection? GetConnectionOrNull(DbCommandProxy command)
             => this._connection?.ConnectionWithId.Connection;
 
         public async Task BeginTransactionAsync(IsolationLevel isolationLevel, ConnectionFactoryParameters parameters, CancellationToken cancellationToken)
@@ -124,10 +117,9 @@ namespace Kirari.Samples.GlobalConnectionPoolStrategies
             this._transaction = null;
         }
 
-        public DbTransaction GetTransactionOrNull(DbCommandProxy command)
+        public DbTransaction? GetTransactionOrNull(DbCommandProxy command)
             => this._transaction;
 
-        [ItemNotNull]
         private async Task<IConnectionWithId<MySqlConnection>> GetConnectionAsync(ConnectionFactoryParameters parameters, CancellationToken cancellationToken)
         {
             //取得済ならそのまま使う
@@ -187,7 +179,9 @@ namespace Kirari.Samples.GlobalConnectionPoolStrategies
                     }
                 },
                 () => this._connection = null, //借りてたものをもう使わないという意思表示
+#pragma warning disable 8625
                 () => this._pool = null); //Pool はお外で管理されてるからここでは参照切るだけ
+#pragma warning restore 8625
         }
     }
 }

@@ -2,7 +2,6 @@ using System;
 using System.Data.Common;
 using System.Threading;
 using System.Threading.Tasks;
-using JetBrains.Annotations;
 using Kirari.Diagnostics;
 
 namespace Kirari
@@ -16,9 +15,8 @@ namespace Kirari
         /// Create new command wrapped by <see cref="DbCommandProxy"/>.
         /// Detect command end by <see cref="DbCommandProxy.Dispose"/>.
         /// </summary>
-        [ItemNotNull]
         Task<DbCommandProxy> CreateCommandAsync(ConnectionFactoryParameters parameters,
-            [CanBeNull] ICommandMetricsReportable metricsReporter,
+            ICommandMetricsReportable? metricsReporter,
             CancellationToken cancellationToken);
 
         /// <summary>
@@ -27,7 +25,6 @@ namespace Kirari
         /// </summary>
         Task ChangeDatabaseAsync(string databaseName, CancellationToken cancellationToken);
 
-        [CanBeNull]
-        DbConnection GetConnectionOrNull(DbCommandProxy command);
+        DbConnection? GetConnectionOrNull(DbCommandProxy command);
     }
 }

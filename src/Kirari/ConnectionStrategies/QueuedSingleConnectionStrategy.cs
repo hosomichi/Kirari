@@ -4,7 +4,6 @@ using System.Data;
 using System.Data.Common;
 using System.Threading;
 using System.Threading.Tasks;
-using JetBrains.Annotations;
 using Kirari.Diagnostics;
 
 namespace Kirari.ConnectionStrategies
@@ -15,38 +14,31 @@ namespace Kirari.ConnectionStrategies
     /// </summary>
     public sealed class QueuedSingleConnectionStrategy : IDefaultConnectionStrategy, ITransactionConnectionStrategy
     {
-        [NotNull]
         private readonly IConnectionFactory<DbConnection> _factory;
 
-        [NotNull]
         private readonly object _commandQueueLock = new object();
 
-        [NotNull]
         private readonly SemaphoreSlim _connectionLock = new SemaphoreSlim(1, 1);
 
-        [NotNull]
         private readonly Queue<TaskCompletionSource<bool>> _commandPreparerQueue = new Queue<TaskCompletionSource<bool>>();
 
-        [CanBeNull]
-        private IConnectionWithId<DbConnection> _connection;
+        private IConnectionWithId<DbConnection>? _connection;
 
-        [CanBeNull]
-        private DbTransaction _transaction;
+        private DbTransaction? _transaction;
 
-        [CanBeNull]
-        private string _overriddenDatabaseName;
+        private string? _overriddenDatabaseName;
 
         private bool _isCommandExecuting;
 
-        public DbConnection TypicalConnection => this._connection?.Connection;
+        public DbConnection? TypicalConnection => this._connection?.Connection;
 
-        public QueuedSingleConnectionStrategy([NotNull] IConnectionFactory<DbConnection> factory)
+        public QueuedSingleConnectionStrategy(IConnectionFactory<DbConnection> factory)
         {
             this._factory = factory;
         }
 
         public async Task<DbCommandProxy> CreateCommandAsync(ConnectionFactoryParameters parameters,
-            ICommandMetricsReportable metricsReporter,
+            ICommandMetricsReportable? metricsReporter,
             CancellationToken cancellationToken)
         {
             var preparer = new TaskCompletionSource<bool>();
@@ -95,7 +87,7 @@ namespace Kirari.ConnectionStrategies
             }
         }
 
-        public DbConnection GetConnectionOrNull(DbCommandProxy command)
+        public DbConnection? GetConnectionOrNull(DbCommandProxy command)
             => this._connection?.Connection;
 
         public async Task BeginTransactionAsync(IsolationLevel isolationLevel, ConnectionFactoryParameters parameters, CancellationToken cancellationToken)
@@ -122,10 +114,9 @@ namespace Kirari.ConnectionStrategies
             this._transaction = null;
         }
 
-        public DbTransaction GetTransactionOrNull(DbCommandProxy command)
+        public DbTransaction? GetTransactionOrNull(DbCommandProxy command)
             => this._transaction;
 
-        [ItemNotNull]
         private async Task<IConnectionWithId<DbConnection>> GetOrCreateConnectionAsync(ConnectionFactoryParameters parameters, CancellationToken cancellationToken)
         {
             if (this._connection != null) return this._connection;
@@ -138,7 +129,7 @@ namespace Kirari.ConnectionStrategies
                 await connection.Connection.OpenAsync(cancellationToken).ConfigureAwait(false);
                 if (!string.IsNullOrWhiteSpace(this._overriddenDatabaseName))
                 {
-                    connection.Connection.ChangeDatabase(this._overriddenDatabaseName);
+                    connection.Connection.ChangeDatabase(this._overriddenDatabaseName!);
                 }
 
                 return this._connection = connection;

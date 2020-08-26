@@ -6,7 +6,6 @@ using System.Diagnostics;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
-using JetBrains.Annotations;
 using Kirari.Diagnostics;
 
 namespace Kirari
@@ -19,10 +18,8 @@ namespace Kirari
     {
         private static long _id;
 
-        [CanBeNull]
-        private readonly ICommandMetricsReportable _commandReporter;
+        private readonly ICommandMetricsReportable? _commandReporter;
 
-        [NotNull]
         private readonly Action<DbCommandProxy> _onDisposed;
 
         private bool _disposed;
@@ -40,7 +37,6 @@ namespace Kirari
         /// <summary>
         /// Get wrapped original command.
         /// </summary>
-        [NotNull]
         public DbCommand SourceCommand { get; }
 
         public override string CommandText
@@ -93,9 +89,9 @@ namespace Kirari
         }
 
         public DbCommandProxy(long connectionId,
-            [NotNull] DbCommand sourceCommand,
-            [CanBeNull] ICommandMetricsReportable commandReporter,
-            [NotNull] Action<DbCommandProxy> onDisposed)
+            DbCommand sourceCommand,
+            ICommandMetricsReportable? commandReporter,
+            Action<DbCommandProxy> onDisposed)
         {
             this.Id = Interlocked.Increment(ref _id);
             this.ConnectionId = connectionId;
@@ -146,7 +142,7 @@ namespace Kirari
             var stopwatch = Stopwatch.StartNew();
 
             T result;
-            Exception exception = null;
+            Exception? exception = null;
             try
             {
                 result = execute();
@@ -185,7 +181,7 @@ namespace Kirari
             var stopwatch = Stopwatch.StartNew();
 
             T result;
-            Exception exception = null;
+            Exception? exception = null;
             try
             {
                 result = await execute().ConfigureAwait(false);

@@ -3,7 +3,6 @@ using System.Data;
 using System.Data.Common;
 using System.Threading;
 using System.Threading.Tasks;
-using JetBrains.Annotations;
 
 namespace Kirari
 {
@@ -14,15 +13,14 @@ namespace Kirari
     {
         private bool _disposed;
 
-        [NotNull]
         private readonly ITransactionConnectionStrategy _strategy;
 
         protected override DbConnection DbConnection
-            => this._strategy.TypicalConnection;
+            => this._strategy.TypicalConnection!; //Do not call DbConnection before TypicalConnection is determined.
 
         public override IsolationLevel IsolationLevel { get; }
 
-        public DbTransactionProxy([NotNull]ITransactionConnectionStrategy strategy,
+        public DbTransactionProxy(ITransactionConnectionStrategy strategy,
             IsolationLevel isolationLevel)
         {
             this._strategy = strategy;
@@ -33,8 +31,7 @@ namespace Kirari
         /// Get current <see cref="DbTransaction"/> for command if transaction enabled.
         /// Return null if transaction disabled.
         /// </summary>
-        [CanBeNull]
-        public DbTransaction GetTransactionOrNull(DbCommandProxy command)
+        public DbTransaction? GetTransactionOrNull(DbCommandProxy command)
             => this._strategy.GetTransactionOrNull(command);
 
         public override void Commit()

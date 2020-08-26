@@ -5,11 +5,12 @@ namespace Kirari
 {
     public static class DisposeHelper
     {
-        public static void EnsureAllSteps(params Action[] actions)
+        public static void EnsureAllSteps(params Action[]? actions)
         {
-            if((actions?.Length ?? 0) <= 0) return;
+            if (actions == null) return;
+            if (actions.Length <= 0) return;
 
-            List<Exception> disposeExceptions = null;
+            List<Exception>? disposeExceptions = null;
 
             foreach (var action in actions)
             {
@@ -23,7 +24,7 @@ namespace Kirari
                 }
             }
 
-            if((disposeExceptions?.Count ?? 0) > 0)
+            if (disposeExceptions != null && disposeExceptions.Count > 0)
             {
                 switch (disposeExceptions.Count)
                 {

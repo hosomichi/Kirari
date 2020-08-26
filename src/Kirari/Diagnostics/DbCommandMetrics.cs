@@ -1,6 +1,5 @@
 using System;
 using System.Collections.Generic;
-using JetBrains.Annotations;
 
 namespace Kirari.Diagnostics
 {
@@ -44,8 +43,7 @@ namespace Kirari.Diagnostics
         /// <summary>
         /// Get <see cref="Exception"/> if occured or null.
         /// </summary>
-        [CanBeNull]
-        public Exception Exception { get; }
+        public Exception? Exception { get; }
 
         public DbCommandMetrics(long commandId,
             long connectionId,
@@ -54,7 +52,7 @@ namespace Kirari.Diagnostics
             IReadOnlyList<DbCommandParameterMetrics> parameters,
             DateTimeOffset startTime,
             TimeSpan executionElapsedTime,
-            [CanBeNull] Exception exception)
+            Exception? exception)
         {
             this.ExecutionType = executionType;
             this.CommandText = capturedCommandText;

@@ -1,6 +1,4 @@
 using System.Data.Common;
-using System.Windows.Input;
-using JetBrains.Annotations;
 
 namespace Kirari
 {
@@ -14,7 +12,6 @@ namespace Kirari
         /// <summary>
         /// Create new connection for parameter.
         /// </summary>
-        [NotNull]
         IConnectionWithId<TConnection> CreateConnection(ConnectionFactoryParameters parameters);
     }
 }

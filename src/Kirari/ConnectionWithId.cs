@@ -1,6 +1,5 @@
 using System.Data.Common;
 using System.Threading;
-using JetBrains.Annotations;
 
 namespace Kirari
 {
@@ -18,7 +17,7 @@ namespace Kirari
 
         public TConnection Connection { get; }
 
-        public ConnectionWithId([NotNull] TConnection connection)
+        public ConnectionWithId(TConnection connection)
         {
             this.Id = Interlocked.Increment(ref _id);
             this.Connection = connection;

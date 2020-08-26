@@ -2,7 +2,6 @@ using System.Data;
 using System.Data.Common;
 using System.Threading;
 using System.Threading.Tasks;
-using JetBrains.Annotations;
 
 namespace Kirari
 {
@@ -14,7 +13,7 @@ namespace Kirari
         /// <summary>
         /// Connection used for <see cref="DbTransaction.Connection"/> property.
         /// </summary>
-        DbConnection TypicalConnection { get; }
+        DbConnection? TypicalConnection { get; }
 
         /// <summary>
         /// Enable transaction until <see cref="EndTransaction"/> is called.
@@ -40,7 +39,6 @@ namespace Kirari
         /// Get current <see cref="DbTransaction"/> for command if transaction enabled.
         /// Return null if transaction disabled.
         /// </summary>
-        [CanBeNull]
-        DbTransaction GetTransactionOrNull(DbCommandProxy command);
+        DbTransaction? GetTransactionOrNull(DbCommandProxy command);
     }
 }

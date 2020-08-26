@@ -1,6 +1,5 @@
 using System;
 using System.Data.Common;
-using JetBrains.Annotations;
 
 namespace Kirari
 {
@@ -18,7 +17,6 @@ namespace Kirari
         /// <summary>
         /// Get created connection by factory.
         /// </summary>
-        [NotNull]
         TConnection Connection { get; }
     }
 }

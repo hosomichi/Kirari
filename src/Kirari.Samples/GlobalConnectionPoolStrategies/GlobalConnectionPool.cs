@@ -4,14 +4,12 @@ using System.Data;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
-using JetBrains.Annotations;
 using MySql.Data.MySqlClient;
 
 namespace Kirari.Samples.GlobalConnectionPoolStrategies
 {
     public class GlobalConnectionPool
     {
-        [NotNull]
         public string PoolName { get; }
 
         /// <summary>
@@ -25,7 +23,6 @@ namespace Kirari.Samples.GlobalConnectionPoolStrategies
         /// </summary>
         private static readonly TimeSpan _forceDisposeTimeFromLastUsed = TimeSpan.FromHours(1);
 
-        [NotNull]
         private readonly IConnectionFactory<MySqlConnection> _factory;
 
         private long _payOutNumber;
@@ -40,7 +37,6 @@ namespace Kirari.Samples.GlobalConnectionPoolStrategies
         /// <summary>
         /// 使用可能なコネクションのスロット。
         /// </summary>
-        [NotNull]
         private readonly InternalPooledConnection[] _connectionPool;
 
         /// <summary>
@@ -60,18 +56,16 @@ namespace Kirari.Samples.GlobalConnectionPoolStrategies
         /// <summary>
         /// <see cref="_waitQueue"/> を操作するためのロックオブジェクト。
         /// </summary>
-        [NotNull]
         private readonly object _waitQueueLock = new object();
 
         /// <summary>
         /// プールの空きを待っている処理の一覧。
         /// </summary>
-        [NotNull]
         private readonly Queue<TaskCompletionSource<PayOut>> _waitQueue = new Queue<TaskCompletionSource<PayOut>>();
 
         #endregion
 
-        public GlobalConnectionPool([NotNull] string poolName, [NotNull] IConnectionFactory<MySqlConnection> factory, int connectionPoolSize)
+        public GlobalConnectionPool(string poolName, IConnectionFactory<MySqlConnection> factory, int connectionPoolSize)
         {
             this.PoolName = poolName;
             this._factory = factory;
@@ -244,7 +238,7 @@ namespace Kirari.Samples.GlobalConnectionPoolStrategies
 
                     //この処理内でキューの数は変わらないから Dequeue は成功する
                     var waitSource = this._waitQueue.Dequeue();
-                    waitSource.SetResult(payOut.Value);
+                    waitSource.SetResult(payOut!.Value);
                 }
             }
         }
@@ -361,8 +355,7 @@ namespace Kirari.Samples.GlobalConnectionPoolStrategies
 
         private class InternalPooledConnection : IDisposable
         {
-            [CanBeNull]
-            public IConnectionWithId<MySqlConnection> ConnectionWithId { get; set; }
+            public IConnectionWithId<MySqlConnection>? ConnectionWithId { get; set; }
 
             /// <summary>
             /// 現在の状態。
@@ -389,7 +382,7 @@ namespace Kirari.Samples.GlobalConnectionPoolStrategies
             /// <summary>
             /// この接続を借りた主体を識別する名前。
             /// </summary>
-            public string CallerName { get; set; }
+            public string? CallerName { get; set; }
 
             public void Dispose()
             {

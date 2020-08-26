@@ -5,7 +5,6 @@ using System.Data.Common;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
-using JetBrains.Annotations;
 using Kirari.Diagnostics;
 
 namespace Kirari.ConnectionStrategies
@@ -16,24 +15,19 @@ namespace Kirari.ConnectionStrategies
     /// </summary>
     public sealed class TermBasedReuseStrategy : IDefaultConnectionStrategy
     {
-        [NotNull]
         private readonly IConnectionFactory<DbConnection> _factory;
 
         private readonly TimeSpan _reusableTime;
 
-        [NotNull]
         private readonly object _reusableConnectionsLock = new object();
 
-        [NotNull]
         private readonly HashSet<IConnectionWithId<DbConnection>> _reusableConnections = new HashSet<IConnectionWithId<DbConnection>>();
 
-        [NotNull]
         private readonly ConcurrentDictionary<DbCommandProxy, IConnectionWithId<DbConnection>> _workingCommands = new ConcurrentDictionary<DbCommandProxy, IConnectionWithId<DbConnection>>();
 
-        [CanBeNull]
-        private string _overriddenDatabaseName;
+        private string? _overriddenDatabaseName;
 
-        public TermBasedReuseStrategy([NotNull] IConnectionFactory<DbConnection> factory,
+        public TermBasedReuseStrategy(IConnectionFactory<DbConnection> factory,
             TimeSpan reusableTime)
         {
             this._factory = factory;
@@ -41,7 +35,7 @@ namespace Kirari.ConnectionStrategies
         }
 
         public async Task<DbCommandProxy> CreateCommandAsync(ConnectionFactoryParameters parameters,
-            ICommandMetricsReportable metricsReporter,
+            ICommandMetricsReportable? metricsReporter,
             CancellationToken cancellationToken)
         {
             var connection = this.TryReuse();
@@ -51,7 +45,7 @@ namespace Kirari.ConnectionStrategies
                 await connection.Connection.OpenAsync(cancellationToken).ConfigureAwait(false);
                 if (!string.IsNullOrWhiteSpace(this._overriddenDatabaseName))
                 {
-                    connection.Connection.ChangeDatabase(this._overriddenDatabaseName);
+                    connection.Connection.ChangeDatabase(this._overriddenDatabaseName!);
                 }
             }
 
@@ -72,12 +66,12 @@ namespace Kirari.ConnectionStrategies
             return Task.CompletedTask;
         }
 
-        public DbConnection GetConnectionOrNull(DbCommandProxy command)
+        public DbConnection? GetConnectionOrNull(DbCommandProxy command)
         {
             return this._workingCommands.TryGetValue(command, out var connection) ? connection.Connection : null;
         }
 
-        private void OnCommandCompleted([NotNull] DbCommandProxy command)
+        private void OnCommandCompleted(DbCommandProxy command)
         {
             //Get initial connection because DbCommandProxy.Connection is mutable.
             if (!this._workingCommands.TryRemove(command, out var connection)) return;
@@ -105,8 +99,7 @@ namespace Kirari.ConnectionStrategies
             });
         }
 
-        [CanBeNull]
-        private IConnectionWithId<DbConnection> TryReuse()
+        private IConnectionWithId<DbConnection>? TryReuse()
         {
             IConnectionWithId<DbConnection> connection;
             lock (this._reusableConnectionsLock)
@@ -119,7 +112,7 @@ namespace Kirari.ConnectionStrategies
 
             if (!string.IsNullOrWhiteSpace(this._overriddenDatabaseName) && connection.Connection.Database != this._overriddenDatabaseName)
             {
-                connection.Connection.ChangeDatabase(this._overriddenDatabaseName);
+                connection.Connection.ChangeDatabase(this._overriddenDatabaseName!);
             }
 
             return connection;

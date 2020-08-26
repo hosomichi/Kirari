@@ -1,5 +1,3 @@
-using JetBrains.Annotations;
-
 namespace Kirari
 {
     /// <summary>
@@ -8,14 +6,12 @@ namespace Kirari
     /// </summary>
     public struct ConnectionStrategyPair
     {
-        [NotNull]
         public IDefaultConnectionStrategy DefaultConnectionStrategy { get; }
 
-        [NotNull]
         public ITransactionConnectionStrategy TransactionConnectionStrategy { get; }
 
-        public ConnectionStrategyPair([NotNull] IDefaultConnectionStrategy defaultConnectionStrategy,
-            [NotNull] ITransactionConnectionStrategy transactionConnectionStrategy)
+        public ConnectionStrategyPair(IDefaultConnectionStrategy defaultConnectionStrategy,
+            ITransactionConnectionStrategy transactionConnectionStrategy)
         {
             this.DefaultConnectionStrategy = defaultConnectionStrategy;
             this.TransactionConnectionStrategy = transactionConnectionStrategy;

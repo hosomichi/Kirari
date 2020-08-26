@@ -4,7 +4,6 @@ using System.Data.Common;
 using System.Threading;
 using System.Threading.Tasks;
 using System.Transactions;
-using JetBrains.Annotations;
 using Kirari.Diagnostics;
 
 namespace Kirari
@@ -17,31 +16,23 @@ namespace Kirari
     public class DbConnectionProxy<TConnection> : DbConnection, IDbConnectionProxy
         where TConnection : DbConnection
     {
-        [NotNull]
         private readonly IConnectionFactory<TConnection> _factory;
 
-        [CanBeNull]
-        private readonly ICommandMetricsReportable _commandMetricsReporter;
+        private readonly ICommandMetricsReportable? _commandMetricsReporter;
 
-        [NotNull]
         private readonly IDefaultConnectionStrategy _defaultStrategy;
 
-        [NotNull]
         private readonly ITransactionConnectionStrategy _transactionStrategy;
 
         private bool _disposed;
 
-        [NotNull]
         private IConnectionStrategy _currentStrategy;
 
-        [CanBeNull]
-        private IConnectionWithId<TConnection> _adminConnection;
+        private IConnectionWithId<TConnection>? _adminConnection;
 
-        [NotNull]
         private IConnectionWithId<TConnection> AdminConnection
-            => this._adminConnection ?? (this._adminConnection = this._factory.CreateConnection(this.CreateFactoryParameters()));
+            => this._adminConnection ??= this._factory.CreateConnection(this.CreateFactoryParameters());
 
-        [NotNull]
         private readonly string _connectionString;
 
         /// <summary>
@@ -70,17 +61,17 @@ namespace Kirari
         public override int ConnectionTimeout
             => this.AdminConnection.Connection.ConnectionTimeout;
 
-        public DbConnectionProxy([NotNull] string connectionString,
-            [NotNull] IConnectionFactory<TConnection> connectionFactory,
-            [NotNull] IConnectionStrategyFactory<TConnection> strategyFactory)
+        public DbConnectionProxy(string connectionString,
+            IConnectionFactory<TConnection> connectionFactory,
+            IConnectionStrategyFactory<TConnection> strategyFactory)
             : this(connectionString, connectionFactory, strategyFactory, null)
         {
         }
 
-        public DbConnectionProxy([NotNull] string connectionString,
-            [NotNull] IConnectionFactory<TConnection> connectionFactory,
-            [NotNull] IConnectionStrategyFactory<TConnection> strategyFactory,
-            [CanBeNull] ICommandMetricsReportable commandMetricsReporter)
+        public DbConnectionProxy(string connectionString,
+            IConnectionFactory<TConnection> connectionFactory,
+            IConnectionStrategyFactory<TConnection> strategyFactory,
+            ICommandMetricsReportable? commandMetricsReporter)
         {
             this._connectionString = connectionString;
             this._factory = connectionFactory;
@@ -192,7 +183,7 @@ namespace Kirari
                 () => this._adminConnection = null);
         }
 
-        DbConnection IDbConnectionProxy.GetConnectionOrNull(DbCommandProxy command)
+        DbConnection? IDbConnectionProxy.GetConnectionOrNull(DbCommandProxy command)
             => this._currentStrategy.GetConnectionOrNull(command);
     }
 }

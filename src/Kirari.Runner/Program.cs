@@ -180,6 +180,8 @@ CREATE TABLE TestData
             }
         }
 
+        // Maybe Initialized by serializer.
+#pragma warning disable 8618
         private class TestData
         {
             public long Id { get; set; }
@@ -191,5 +193,6 @@ CREATE TABLE TestData
                 return $"{{Id = {this.Id}, Name = {this.Name}}}";
             }
         }
+#pragma warning restore 8618
     }
 }

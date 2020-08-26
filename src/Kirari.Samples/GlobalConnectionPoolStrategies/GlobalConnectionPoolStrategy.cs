@@ -5,7 +5,6 @@ using System.Data.Common;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
-using JetBrains.Annotations;
 using Kirari.Diagnostics;
 
 namespace Kirari.Samples.GlobalConnectionPoolStrategies
@@ -22,15 +21,14 @@ namespace Kirari.Samples.GlobalConnectionPoolStrategies
 
         private GlobalConnectionPool _pool;
 
-        [CanBeNull]
-        private string _overriddenDatabaseName;
+        private string? _overriddenDatabaseName;
 
-        public GlobalConnectionPoolStrategy([NotNull] GlobalConnectionPool pool)
+        public GlobalConnectionPoolStrategy(GlobalConnectionPool pool)
         {
             this._pool = pool;
         }
 
-        public async Task<DbCommandProxy> CreateCommandAsync(ConnectionFactoryParameters parameters, ICommandMetricsReportable metricsReporter, CancellationToken cancellationToken)
+        public async Task<DbCommandProxy> CreateCommandAsync(ConnectionFactoryParameters parameters, ICommandMetricsReportable? metricsReporter, CancellationToken cancellationToken)
         {
             var (connection, index, payOutNumber) = await this._pool.GetConnectionAsync(
                     parameters,
@@ -87,7 +85,9 @@ namespace Kirari.Samples.GlobalConnectionPoolStrategies
                     }
                 },
                 () => this._workingCommands.Clear(),
+#pragma warning disable 8625
                 () => this._pool = null); //Pool はお外で管理されてるからここでは参照切るだけ
+#pragma warning restore 8625
         }
     }
 }
